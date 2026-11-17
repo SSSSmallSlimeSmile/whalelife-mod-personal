@@ -56,21 +56,24 @@ const FIELDS = {
     label: "附上屏幕上的文字（慢）",
     hint: "额外提取窗口文字和 OCR 结果，识图更准，但每次要多等几秒。默认关。",
   },
-  vision_mode: {
-    kind: "select",
-    label: "识图走哪条路",
-    options: [
-      { value: "chat", label: "用对话模型（推荐）" },
-      { value: "ollama", label: "用本地 Ollama" },
-    ],
-    hint: "对话模型：把拼好的图交给会看图的那个对话模型，本机不用装视觉模型，也不用 Ollama 在跑。本地 Ollama：走本机的视觉模型，不花 API 的钱，但要求 Ollama 开着、模型也在。",
-  },
-  vision_model: {
+  vision_primary: {
     kind: "select",
     dynamic: "chat",
-    dep: { key: "vision_mode", values: ["chat"] },
-    label: "用哪个对话模型看图",
-    hint: "默认跟随当前会话的模型：你现在跟哪个模型说话，就用哪个看图。也可以指定一个别的——比如聊天用便宜的、看图用认得清的。选中的模型不支持图片时，会自动退回下面那个本地模型再试一次。",
+    lead: [{ value: "chat", label: "跟随当前会话模型（推荐）" }],
+    tail: [{ value: "ollama", label: "本地 Ollama（用下面那个模型名）" }],
+    label: "一级：用谁识图",
+    hint: "默认跟随当前会话：你跟哪个模型说话，就用哪个看图。云端看得快、不占显存，是本机默认。也可以固定成某个对话模型，比如聊天用便宜的、看图用认得清的。",
+  },
+  vision_backup: {
+    kind: "select",
+    dynamic: "chat",
+    lead: [
+      { value: "none", label: "不备用（一级不行就报错）" },
+      { value: "chat", label: "跟随当前会话模型" },
+    ],
+    tail: [{ value: "ollama", label: "本地 Ollama（用下面那个模型名）" }],
+    label: "二级：一级不行时换谁",
+    hint: "一级报错、超时、或者那个模型不支持图片时，自动换这一级再试一次。选了本地那一档要先看下面两项显存设置；显存不够会当场说明，不会硬加载。",
   },
   ollama_model: {
     kind: "text",
@@ -91,6 +94,16 @@ const FIELDS = {
     kind: "number", min: 1000, max: 40000,
     label: "本地视觉模型要多少显存（MiB）",
     hint: "qwen3-vl:4b 大约要 4700-5200。换成更大的模型就往上调。",
+  },
+  vision_max_tokens: {
+    kind: "number", min: 256, max: 32000,
+    label: "单次识图最多输出多少 token",
+    hint: "思考型模型（比如 deepseek 那几档）会先想一大段再写正文，额度给小了正文就被截掉、只剩空回复。6000 够一般的拼图描述；换了更爱想的模型再往上调。",
+  },
+  vision_no_think: {
+    kind: "boolean",
+    label: "识图时不先想一大段",
+    hint: "开着的话，识图这一请求会带上 thinking: disabled，思考型模型（deepseek 那几档）直接写描述，不先耗几千 token 想。模型不认这个参数时会被忽略，不会报错。",
   },
   vision_timeout_ms: {
     kind: "number", min: 5000, max: 600000,
@@ -170,11 +183,15 @@ function field(key: FieldKey, cfg: any, chatModels: ChatModelOption[]): string {
   } else if (spec.kind === "select") {
     let options: Array<{ value: string; label: string }> = spec.options as any;
     if (spec.dynamic === "chat") {
-      options = [{ value: "", label: "跟随当前会话模型" }].concat(
+      const lead = (spec.lead as Array<{ value: string; label: string }>) ?? [{ value: "", label: "跟随当前会话模型" }];
+      const tail = (spec.tail as Array<{ value: string; label: string }>) ?? [];
+      options = lead.concat(
         chatModels.map((m) => ({ value: m.id, label: `${m.name}（${m.model}）` })),
+        tail,
       );
       const want = String(value ?? "").trim();
-      if (want && !chatModels.some((m) => m.id === want)) {
+      const reserved = lead.concat(tail).map((o) => o.value);
+      if (want && !reserved.includes(want) && !chatModels.some((m) => m.id === want)) {
         options.push({ value: want, label: `${want}（当前配置里没有这个名字）` });
       }
     }

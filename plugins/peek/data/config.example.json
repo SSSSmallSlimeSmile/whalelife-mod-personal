@@ -6,10 +6,13 @@
   "tier_style": "native",
   "tier_lock": 0,
   "text_layer": false,
-  "vision_mode": "chat",
-  "vision_model": "",
+  "vision_primary": "chat",
+  "vision_backup": "ollama",
   "ollama_model": "qwen3-vl:4b",
   "ollama": "http://127.0.0.1:11434",
   "vram_guard": true,
-  "need_vram_mb": 5200
+  "need_vram_mb": 5200,
+  "vision_no_think": true,
+  "vision_timeout_ms": 120000,
+  "run_timeout_ms": 180000
 }

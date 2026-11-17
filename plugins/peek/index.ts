@@ -4,8 +4,8 @@
  * 只把 AstrBot 插件壳换成了命令行）。这边只管三件事：
  *   拉起边车、读回 JSON、把拼好的图交给识图模型说一遍。
  *
- * 识图走哪条路可配：默认交给对话模型（跟随当前会话，或指定某一个），
- * 也可以走本地 Ollama。对话模型看不了图时自动退回本地 Ollama 再试一次。
+ * 识图分两级：一级默认交给对话模型（跟随当前会话，或指定某一个），
+ * 二级默认走本地 Ollama。一级报错、超时或模型不支持图片时，自动换二级再试一次。
  *
  * 与 eyes 的区别：eyes 只看当前一帧；这里抓一段，只为「画面变了」的帧付 token。
  */
@@ -38,10 +38,10 @@ const DEFAULTS = {
   max_width: 1600,
   /** UIA + OCR 认一次字，慢，默认关。 */
   text_layer: false,
-  /** 识图走哪条路：chat = 对话模型（默认），ollama = 本地。 */
-  vision_mode: "chat",
-  /** 对话模型的配置 id。留空则跟随当前会话的人格模型。 */
-  vision_model: "",
+  /** 一级识图：chat = 跟随当前会话的模型；也可以直接填某个对话模型的 id；ollama = 本地。 */
+  vision_primary: "chat",
+  /** 二级备用：一级报错、超时或不支持图片时换它。none = 不备用。 */
+  vision_backup: "ollama",
   /** 本地 Ollama 里的视觉模型名，也是对话模型看不了图时的退路。 */
   ollama_model: "qwen3-vl:4b",
   ollama: "http://127.0.0.1:11434",
@@ -49,6 +49,10 @@ const DEFAULTS = {
   vram_guard: true,
   /** 加载本地视觉模型至少要多少空闲显存（MiB）。 */
   need_vram_mb: 5200,
+  /** 单次识图最多输出多少 token。思考型模型会先想一段，太小会把正文挤掉。 */
+  /** 识图时让思考型模型别先想一大段：只想不写，正文就会被输出上限挤掉。 */
+  vision_no_think: true,
+  vision_max_tokens: 6000,
   vision_timeout_ms: 120_000,
   /** 边车总超时：抓多久 + 装箱 + 认字，留足余量。 */
   run_timeout_ms: 180_000,
@@ -166,14 +170,19 @@ function chatModels(ctx: Context): Array<{ id: string; name: string; model: stri
   }
 }
 
-/** 这次识图用哪个对话模型：配置指定 → 当前会话人格的模型 → 列表里第一个能用的。 */
-function pickChatModel(ctx: Context, cfg: Config, session: any): { id: string; label: string } | null {
+/** 这次识图用哪个对话模型：指定的那个 → 当前会话人格的模型 → 列表里第一个能用的。 */
+function pickChatModel(
+  ctx: Context,
+  session: any,
+  want: string | null,
+): { id: string; label: string } | null {
   const all = chatModels(ctx);
-  const want = String(cfg.vision_model ?? "").trim();
-  if (want) {
-    const hit = all.find((m) => m.id === want) ?? all.find((m) => m.model === want) ?? all.find((m) => m.name === want);
+  const wanted = String(want ?? "").trim();
+  if (wanted) {
+    const hit =
+      all.find((m) => m.id === wanted) ?? all.find((m) => m.model === wanted) ?? all.find((m) => m.name === wanted);
     if (hit) return { id: hit.id, label: `${hit.name}（${hit.model}）` };
-    console.warn(`[peek] 配置的对话模型 ${want} 不在可用列表里，改用当前会话的模型`);
+    console.warn(`[peek] 配置的对话模型 ${wanted} 不在可用列表里，改用当前会话的模型`);
   }
   const personaId = String(session?.personaId ?? "").trim();
   if (personaId) {
@@ -192,14 +201,44 @@ function pickChatModel(ctx: Context, cfg: Config, session: any): { id: string; l
   return first ? { id: first.id, label: `${first.name}（${first.model}）` } : null;
 }
 
-/** 旧配置里 vision_mode 还没写，而 vision_model 填的是 Ollama 的模型名：按本地处理，别把人家的配置改坏。 */
-function visionMode(ctx: Context, cfg: Config): "chat" | "ollama" {
-  const raw = String((cfg as any).vision_mode ?? "").trim().toLowerCase();
-  if (raw === "chat" || raw === "ollama") return raw;
-  const want = String(cfg.vision_model ?? "").trim();
-  if (!want) return "chat";
-  const hit = chatModels(ctx).some((m) => m.id === want || m.model === want);
-  return hit ? "chat" : "ollama";
+/** 配置里那一档写了什么：none/off/空 = 不用；ollama = 本地；chat = 跟随会话；其它当模型 id。 */
+function parseTarget(raw: unknown): { kind: "chat"; id: string | null } | { kind: "ollama" } | null {
+  const v = String(raw ?? "").trim();
+  const low = v.toLowerCase();
+  if (!v || low === "none" || low === "off" || low === "no") return null;
+  if (low === "ollama") return { kind: "ollama" };
+  if (low === "chat") return { kind: "chat", id: null };
+  return { kind: "chat", id: v };
+}
+
+/** 识图要依次试的几档：一号不行才用二号。两档碰巧是同一个模型就只留一份。 */
+export function buildChain(
+  ctx: Context,
+  cfg: Config,
+  session: any,
+): Array<{ kind: "chat" | "ollama"; id: string; label: string }> {
+  const chain: Array<{ kind: "chat" | "ollama"; id: string; label: string }> = [];
+  const tiers: Array<[string, unknown]> = [
+    ["一级", cfg.vision_primary],
+    ["二级", cfg.vision_backup],
+  ];
+  for (const [tier, raw] of tiers) {
+    const target = parseTarget(raw);
+    if (!target) continue;
+    if (target.kind === "ollama") {
+      if (chain.some((c) => c.kind === "ollama")) continue;
+      chain.push({ kind: "ollama", id: cfg.ollama_model, label: `${cfg.ollama_model}（本地）` });
+      continue;
+    }
+    const pick = pickChatModel(ctx, session, target.id);
+    if (!pick) {
+      ctx.logger.warn(`看屏识图：${tier}「${String(raw)}」找不到可用的对话模型，跳过`);
+      continue;
+    }
+    if (chain.some((c) => c.id === pick.id)) continue;
+    chain.push({ kind: "chat", id: pick.id, label: pick.label });
+  }
+  return chain;
 }
 
 /** 交给对话模型看图。 */
@@ -222,7 +261,8 @@ async function describeChat(
         ],
       },
     ],
-    max_tokens: 2000,
+    max_tokens: cfg.vision_max_tokens,
+    parameters: cfg.vision_no_think ? { thinking: { type: "disabled" } } : undefined,
     signal: AbortSignal.timeout(cfg.vision_timeout_ms),
   });
   const text = String(reply?.text ?? "").trim();
@@ -301,7 +341,7 @@ async function describeOllama(cfg: Config, model: string, file: string, question
   }
 }
 
-/** 识图总入口：按配置选路，失败就换另一条再试一次，不直接扔错误给模型。 */
+/** 识图总入口：一级不行换二级，两级都不成才把两边的原因一起报出来。 */
 async function describe(
   ctx: Context,
   cfg: Config,
@@ -309,30 +349,39 @@ async function describe(
   file: string,
   question: string,
 ): Promise<{ text: string; by: string; note?: string }> {
-  const mode = visionMode(ctx, cfg);
-  if (mode === "chat") {
-    const pick = pickChatModel(ctx, cfg, session);
-    if (!pick) {
-      const text = await describeOllama(cfg, cfg.ollama_model, file, question);
-      return { text, by: cfg.ollama_model, note: "没有可用的对话模型，走了本地" };
-    }
+  const chain = buildChain(ctx, cfg, session);
+  if (!chain.length) throw new Error("一级和二级都没落上，没有可用的识图模型");
+  const tried: string[] = [];
+  for (const leg of chain) {
     try {
-      const text = await describeChat(ctx, pick.id, cfg, file, question);
-      return { text, by: pick.label };
+      const text =
+        leg.kind === "ollama"
+          ? await describeOllama(cfg, cfg.ollama_model, file, question)
+          : await describeChat(ctx, leg.id, cfg, file, question);
+      if (!tried.length) return { text, by: leg.label };
+      ctx.logger.info(`看屏识图：换到 ${leg.label} 才成`);
+      return { text, by: leg.label, note: `${tried.join("；")}；换到${leg.kind === "ollama" ? "本地" : "备用"} ${leg.label} 成了` };
     } catch (error: any) {
-      const first = String(error?.message ?? error);
-      try {
-        const text = await describeOllama(cfg, cfg.ollama_model, file, question);
-        return { text, by: cfg.ollama_model, note: `对话模型没成（${first}），已退回本地` };
-      } catch (fallback: any) {
-        throw new Error(
-          `对话模型 ${pick.label} 没成：${first}；本地 ${cfg.ollama_model} 也没成：${fallback?.message ?? fallback}`,
-        );
-      }
+      tried.push(`${leg.label} 没成：${String(error?.message ?? error)}`);
     }
   }
-  const text = await describeOllama(cfg, cfg.ollama_model, file, question);
-  return { text, by: cfg.ollama_model };
+  throw new Error(tried.join("；"));
+}
+
+/** 旧配置迁移：以前是 vision_mode + vision_model，换成一级/二级。 */
+function normalizeSaved(raw: any): any {
+  if (!raw || typeof raw !== "object") return raw ?? {};
+  const out: any = { ...raw };
+  if (out.vision_primary === undefined) {
+    const mode = String(out.vision_mode ?? "").trim().toLowerCase();
+    const want = String(out.vision_model ?? "").trim();
+    if (mode === "ollama") out.vision_primary = "ollama";
+    else if (want) out.vision_primary = want;
+    else out.vision_primary = "chat";
+  }
+  delete out.vision_mode;
+  delete out.vision_model;
+  return out;
 }
 
 /** plugins.json 的 disabled 里没有 eyes，就算它开着。读不到也按开着算，宁可多提醒一次。 */
@@ -353,13 +402,13 @@ export async function apply(ctx: Context) {
   } catch {
     saved = null;
   }
-  let cfg: Config = { ...DEFAULTS, ...(saved ?? {}) };
+  let cfg: Config = { ...DEFAULTS, ...normalizeSaved(saved) };
 
   /** 每次调用重读配置：改 config.json 不用重启进程。 */
   const reload = async () => {
     try {
       const again = (await ctx.config.read("config.json")) as Partial<Config> | null;
-      cfg = { ...DEFAULTS, ...(again ?? {}) };
+      cfg = { ...DEFAULTS, ...normalizeSaved(again) };
     } catch {
       // 读不到就沿用上一次那份
     }
@@ -494,24 +543,25 @@ export async function apply(ctx: Context) {
       if (existsSync(script)) lines.push(`[✓] 边车脚本：${script}`);
       else { ok = false; lines.push(`[×] 边车脚本不在：${script}`); }
 
-      // 3. 识图这条路通不通
-      const mode = visionMode(ctx, cfg);
-      if (mode === "chat") {
-        const all = chatModels(ctx);
-        const pick = pickChatModel(ctx, cfg, null);
-        if (!pick) {
-          ok = false;
-          lines.push(`[×] 识图：没有可用的对话模型，只能退回本地 Ollama（${cfg.ollama_model}）`);
-        } else {
-          lines.push(`[✓] 识图走对话模型：${pick.label}（共 ${all.length} 个可用对话模型）`);
-          if (!String(cfg.vision_model ?? "").trim()) {
-            lines.push("    没指定模型时，会跟随当前会话的人格模型；我这里看不到会话，就用列表里第一个可用的。");
-          }
+      // 3. 识图这两级各落到谁身上
+      const chain = buildChain(ctx, cfg, null);
+      if (!chain.length) {
+        ok = false;
+        lines.push("[×] 识图：一级和二级都没落上，没有能用的模型");
+      } else {
+        const names = ["一级", "二级", "备用"];
+        chain.forEach((leg, i) => {
+          lines.push(`[✓] ${names[i] ?? "备用"}识图：${leg.label}`);
+        });
+        if (chain.some((c) => c.kind === "chat")) {
+          lines.push(
+            `    共 ${chatModels(ctx).length} 个可用对话模型；选「跟随当前会话」时，谁跟我说话就用谁看图，这里看不到会话，按列第一个算。`,
+          );
         }
       }
 
-      // 4. 本地 Ollama（本地模式必查；对话模式下是退路，查不到只提示不算失败）
-      const isFallback = mode === "chat";
+      // 4. 本地 Ollama（本地是一级就必查；只是备用时查不到只提示，不算失败）
+      const isFallback = !(chain.length && chain[0].kind === "ollama");
       try {
         const r = await fetch(`${cfg.ollama}/api/tags`, { signal: AbortSignal.timeout(8000) });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
