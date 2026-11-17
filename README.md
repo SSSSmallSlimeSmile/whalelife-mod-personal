@@ -99,6 +99,7 @@ copy plugins\peek\data\config.example.json plugins\peek\data\config.json
 - `focus`：`auto` 按前台窗口挑区域，`whole` 整屏抓
 - `tier_style`：档位整体偏移，`native` / `up` / `down`
 - `tier_lock`：`1`–`3` 锁死一档，`0` 不锁（不锁时按画面变化量自动分档）
+- 这两项怎么分档、锁档后会压掉几帧，细看 `plugins/peek/README.md`
 - 改配置不用重启，每次调用重读
 
 参数：`seconds`（2–60，默认 10）、`max_frames`（1–12，默认 6）、`max_width`（400–4096，默认 1600）。
