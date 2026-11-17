@@ -39,13 +39,24 @@ pip install -r plugins/peek/requirements.txt
 
 需要 `numpy` 和 `Pillow`。Windows 上还要有 PowerShell 5.1 或以上。
 
-配置在 `plugins/peek/data/config.json`：
+仓库里只有 `plugins/peek/data/config.example.json`，**没有可用的 `config.json`**——因为路径跟每台机器不同。用之前先复制一份：
+
+```
+copy plugins\peek\data\config.example.json plugins\peek\data\config.json
+```
+
+拿到的是：
 
 ```json
-{"python": ""}
+{
+  "python": "",
+  "focus": "auto"
+}
 ```
 
 - `python` 留空 → 依次找环境变量 `WHALELIFE_PEEK_PYTHON`、然后 PATH 里的 `python`
+- Windows 上 PATH 里的 `python` 常常是应用商店的占位符，一跑就报「边车没跑成」。装了 Python 却报这个，就把 `python` 写成绝对路径
+- `focus`：`auto` 按前台窗口挑区域，`whole` 整屏抓
 - 改配置不用重启，每次调用重读
 
 参数：`seconds`（2–60，默认 10）、`max_frames`（1–12，默认 6）、`max_width`（400–4096，默认 1600）。
@@ -54,9 +65,9 @@ pip install -r plugins/peek/requirements.txt
 
 ## 许可
 
-这些插件是我自己写的，没有基于上游代码，所以不受上游的 AGPL 约束。
+MIT，全文见 `LICENSE`。
 
-目前**没有附许可证文件**，默认保留所有权利。如果要让群友自由二次分发，需要先定一个许可证（MIT / Apache-2.0 / AGPL-3.0 都可以）。这一步等你定，我不替你选。
+这些插件运行于 WhaleLife，仅通过其插件 API 交互，不含上游代码，因此按 MIT 独立发布，不受上游 AGPL 约束。
 
 ## 已知短板
 
