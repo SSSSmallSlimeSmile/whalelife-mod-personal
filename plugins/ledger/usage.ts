@@ -1,7 +1,8 @@
 /*! 扫 memory/sessions 下的 episodes/*.jsonl，把每行 request_usage 按「日 × 模型」「小时 × 模型」聚起来。
  *
  * 只读。不写任何文件，也不碰会话本身。
- * 判官用量单独落在 memory/usage-judge.jsonl，一并扫，省得为它多写一套聚合。
+ * 另有一个可选来源 memory/usage-judge.jsonl；配置 include_judge_usage 为 true 才读它。
+ * 那个文件来自按难度挑模型的扩展，没有它账本一样能跑。
  */
 import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -26,11 +27,11 @@ export function judgeUsagePath(root: string) {
   return resolve(root, "memory/usage-judge.jsonl");
 }
 
-async function episodeFiles(root: string) {
+async function episodeFiles(root: string, includeJudge: boolean) {
   const base = resolve(root, "memory/sessions");
   let sessions: string[];
-  try { sessions = await readdir(base); } catch { return [judgeUsagePath(root)]; }
-  const files: string[] = [judgeUsagePath(root)];
+  const files: string[] = includeJudge ? [judgeUsagePath(root)] : [];
+  try { sessions = await readdir(base); } catch { return files; }
   for (const id of sessions) {
     const dir = resolve(base, id, "episodes");
     let names: string[];
@@ -99,7 +100,7 @@ export async function collectDays(root: string, config: any, days: number) {
   const wanted = new Set<string>();
   for (let i = 0; i < days; i++) wanted.add(dayOf(Date.now() - i * DAY_MS, timeZone));
   const agg = new Aggregator<Row>(providers);
-  for (const file of await episodeFiles(root)) {
+  for (const file of await episodeFiles(root, config?.include_judge_usage === true)) {
     let text: string;
     try { text = await readFile(file, "utf8"); } catch { continue; }
     if (!text.includes("request_usage")) continue;
@@ -127,7 +128,7 @@ export async function collectHours(root: string, config: any) {
   const providers = new Map<string, Provider>((config?.providers || []).map((p: any) => [p.id, p]));
   const today = dayOf(Date.now(), timeZone);
   const agg = new Aggregator<HourRow>(providers);
-  for (const file of await episodeFiles(root)) {
+  for (const file of await episodeFiles(root, config?.include_judge_usage === true)) {
     let text: string;
     try { text = await readFile(file, "utf8"); } catch { continue; }
     if (!text.includes("request_usage")) continue;

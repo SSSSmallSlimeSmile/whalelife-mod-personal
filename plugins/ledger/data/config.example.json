@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "days": 7,
+  "max_files": 400,
+  "include_judge_usage": false
+}

@@ -28,6 +28,8 @@ const DEFAULTS = {
   days: 7,
   /** 每轮最多读多少个 jsonl 文件；会话多了也不至于卡住页面。 */
   max_files: 400,
+  /** 额外统计 memory/usage-judge.jsonl（按难度挑模型的扩展才有）。 */
+  include_judge_usage: false,
 };
 
 type Config = typeof DEFAULTS;
@@ -58,7 +60,7 @@ export async function apply(ctx: Context) {
   }
 
   const snapshot = async (days: number) => {
-    const global = await loadGlobal();
+    const global = { ...(await loadGlobal()), include_judge_usage: cfg.include_judge_usage };
     const [rows, hourly] = await Promise.all([
       collectDays(ROOT, global, days),
       collectHours(ROOT, global),
@@ -85,7 +87,7 @@ export async function apply(ctx: Context) {
     danger: "safe",
     schema: { type: "object", properties: {}, additionalProperties: false },
     async run() {
-      const global = await loadGlobal();
+      const global = { ...(await loadGlobal()), include_judge_usage: cfg.include_judge_usage };
       const [rows, hourly] = await Promise.all([
         collectDays(ROOT, global, 1),
         collectHours(ROOT, global),

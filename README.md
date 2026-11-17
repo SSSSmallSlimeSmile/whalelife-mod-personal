@@ -49,7 +49,20 @@ plugins/
 
 ## ledger 用量账本
 
-不需要额外依赖，不需要配置。数据来自 `episodes/*.jsonl` 里已经存在的 `request_usage`，只读，不写任何东西。
+不需要额外依赖。数据来自 `episodes/*.jsonl` 里已经存在的 `request_usage`，只读，不写任何东西。
+
+配置可以不做，不做就用默认值。要改的话先复制一份：
+
+```
+copy plugins\ledger\data\config.example.json plugins\ledger\data\config.json
+```
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `enabled` | `true` | 设成 `false` 就不加载这个插件 |
+| `days` | `7` | 默认看几天，页面上的天数下拉会覆盖它 |
+| `max_files` | `400` | 单次最多读多少个 jsonl，防止会话太多把页面拖死 |
+| `include_judge_usage` | `false` | 额外统计 `memory/usage-judge.jsonl`。那个文件来自“按难度挑模型”的扩展，**没装那个扩展就保持 `false`**；设成 `true` 而文件不存在也不会报错，只是没东西可读 |
 
 价格表在 `prices.ts`，按 2026-11-16 的价目核过。**金额是参考值，不是账单**——按价目重算，和供应商实际扣费可能不同。
 
