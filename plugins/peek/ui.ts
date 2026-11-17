@@ -56,20 +56,46 @@ const FIELDS = {
     label: "附上屏幕上的文字（慢）",
     hint: "额外提取窗口文字和 OCR 结果，识图更准，但每次要多等几秒。默认关。",
   },
+  vision_mode: {
+    kind: "select",
+    label: "识图走哪条路",
+    options: [
+      { value: "chat", label: "用对话模型（推荐）" },
+      { value: "ollama", label: "用本地 Ollama" },
+    ],
+    hint: "对话模型：把拼好的图交给会看图的那个对话模型，本机不用装视觉模型，也不用 Ollama 在跑。本地 Ollama：走本机的视觉模型，不花 API 的钱，但要求 Ollama 开着、模型也在。",
+  },
   vision_model: {
+    kind: "select",
+    dynamic: "chat",
+    dep: { key: "vision_mode", values: ["chat"] },
+    label: "用哪个对话模型看图",
+    hint: "默认跟随当前会话的模型：你现在跟哪个模型说话，就用哪个看图。也可以指定一个别的——比如聊天用便宜的、看图用认得清的。选中的模型不支持图片时，会自动退回下面那个本地模型再试一次。",
+  },
+  ollama_model: {
     kind: "text",
-    label: "识图模型",
-    hint: "本地 Ollama 里的视觉模型名，例如 qwen3-vl:4b。换更大的模型认得更多，但更慢、更吃显存。",
+    label: "本地 Ollama 的模型名",
+    hint: "例如 qwen3-vl:4b。只在「用本地 Ollama」时作数，也是对话模型看不了图时的退路。",
   },
   ollama: {
     kind: "text",
     label: "Ollama 地址",
     hint: "通常是 http://127.0.0.1:11434。只有 Ollama 装在别的机器上才需要改。",
   },
+  vram_guard: {
+    kind: "boolean",
+    label: "本地识图前先看显存",
+    hint: "开着的话，加载本地视觉模型之前先问一次还剩多少显存；不够就不加载，直接说明原因。8GB 以下的显卡建议一直开着。",
+  },
+  need_vram_mb: {
+    kind: "number", min: 1000, max: 40000,
+    label: "本地视觉模型要多少显存（MiB）",
+    hint: "qwen3-vl:4b 大约要 4700-5200。换成更大的模型就往上调。",
+  },
   vision_timeout_ms: {
     kind: "number", min: 5000, max: 600000,
     label: "识图超时（毫秒）",
-    hint: "单次送图给视觉模型最多等多久。显存小、模型大时要放宽。",
+    hint: "单次送图给视觉模型最多等多久。云端模型或显存小、模型大时要放宽。",
   },
   run_timeout_ms: {
     kind: "number", min: 10000, max: 600000,
@@ -116,6 +142,11 @@ export function sanitize(input: any): Record<string, unknown> {
       out[key] = value === true || value === "true" || value === "on" || value === 1;
     } else if (spec.kind === "select") {
       const text = String(value ?? "").trim();
+      // 动态下拉的选项来自运行时，这里只把长度挡住，真伪由插件在调用时再校验
+      if ((spec as any).dynamic) {
+        out[key] = text.slice(0, 200);
+        continue;
+      }
       const ok = (spec.options as readonly any[]).some((o) => (typeof o === "string" ? o : o.value) === text);
       if (ok) out[key] = text;
     } else {
@@ -125,7 +156,9 @@ export function sanitize(input: any): Record<string, unknown> {
   return out;
 }
 
-function field(key: FieldKey, cfg: any): string {
+type ChatModelOption = { id: string; name: string; model: string };
+
+function field(key: FieldKey, cfg: any, chatModels: ChatModelOption[]): string {
   const spec: any = FIELDS[key];
   const value = cfg?.[key];
   const name = esc(key);
@@ -135,11 +168,20 @@ function field(key: FieldKey, cfg: any): string {
   if (spec.kind === "boolean") {
     control = `<label class="pg-row pg-check"><input type="checkbox" name="${name}"${value ? " checked" : ""}><span class="pg-label">${label}</span></label>`;
   } else if (spec.kind === "select") {
-    const opts = spec.options
-      .map((o: any) => {
-        const v = typeof o === "string" ? o : o.value;
-        const t = typeof o === "string" ? o : o.label;
-        return `<option value="${esc(v)}"${String(value) === v ? " selected" : ""}>${esc(t)}</option>`;
+    let options: Array<{ value: string; label: string }> = spec.options as any;
+    if (spec.dynamic === "chat") {
+      options = [{ value: "", label: "跟随当前会话模型" }].concat(
+        chatModels.map((m) => ({ value: m.id, label: `${m.name}（${m.model}）` })),
+      );
+      const want = String(value ?? "").trim();
+      if (want && !chatModels.some((m) => m.id === want)) {
+        options.push({ value: want, label: `${want}（当前配置里没有这个名字）` });
+      }
+    }
+    const opts = options
+      .map((o) => {
+        const selected = String(value ?? "") === o.value;
+        return `<option value="${esc(o.value)}"${selected ? " selected" : ""}>${esc(o.label)}</option>`;
       })
       .join("");
     control = `<label class="pg-row"><span class="pg-label">${label}</span><select name="${name}">${opts}</select></label>`;
@@ -148,11 +190,21 @@ function field(key: FieldKey, cfg: any): string {
   } else {
     control = `<label class="pg-row"><span class="pg-label">${label}</span><input type="text" name="${name}" value="${esc(value)}"></label>`;
   }
-  return `<div class="pg-item">${control}${hint}</div>`;
+  const dep = (spec as any).dep as { key: string; values: string[] } | undefined;
+  const depAttr = dep ? ` data-dep="${esc(dep.key)}" data-dep-values="${esc(dep.values.join(","))}"` : "";
+  return `<div class="pg-item"${depAttr}>${control}${hint}</div>`;
 }
-/** 渲染配置页：结构和配色都走 /ui/styles.css，跟管理页同一套。 */
-export function renderPage(cfg: any): string {
-  const items = (Object.keys(FIELDS) as FieldKey[]).map((k) => field(k, cfg));
+
+/** 渲染配置页：结构和配色都走 /ui/styles.css，跟管理页同一套。
+ * chatModels 是「用哪个对话模型看图」下拉的选项，由 index.ts 从宿主那边取来传进来。
+ */
+export function renderPage(cfg: any, chatModels: ChatModelOption[] = [], warnings: string[] = []): string {
+  const warnBlock = warnings.length
+    ? `<section class="panel" style="border-color:rgba(220,38,38,.45)"><div class="panel-header"><h2 style="color:#b91c1c">注意</h2></div><div class="panel-body">${warnings
+        .map((w) => `<p class="pg-hint" style="margin:0 0 8px;color:#b91c1c">${esc(w)}</p>`)
+        .join("")}</div></section>\n`
+    : "";
+  const items = (Object.keys(FIELDS) as FieldKey[]).map((k) => field(k, cfg, chatModels));
   const editable = items
     .reduce<string[]>((acc, cur, i) => {
       if (i % 2 === 0) acc.push(`<div class="pg-pair">${cur}`);
@@ -175,6 +227,8 @@ export function renderPage(cfg: any): string {
 .panel-body .pg-pair:last-child{margin-bottom:0}
 .panel-body .pg-pair>.pg-item:only-child{grid-column:1/-1}
 .panel-body .pg-item{min-width:0}
+.panel-body .pg-item.pg-off{opacity:.45}
+.panel-body .pg-item.pg-off .pg-hint{opacity:.8}
 .panel-body .pg-hint{margin:10px 0 0;font-size:12px;line-height:1.65;color:#797e8c}
 .panel-body .pg-ro{display:grid;grid-template-columns:150px 1fr;gap:16px;margin:14px 0;font-size:13px;align-items:baseline}
 .panel-body .pg-ro b{font-weight:600;color:#797e8c}
@@ -190,7 +244,7 @@ export function renderPage(cfg: any): string {
 @media(max-width:760px){.panel-body .pg-pair{grid-template-columns:1fr}}
 </style></head><body>
 <form id="f">
-<section class="panel"><div class="panel-header"><h2>可编辑</h2><div class="pg-actions"><button class="btn" type="button" id="test">测试配置</button><button class="btn primary" type="submit" form="f" id="ok">保存</button><span id="msg"></span></div></div><div class="panel-body">
+${warnBlock}<section class="panel"><div class="panel-header"><h2>可编辑</h2><div class="pg-actions"><button class="btn" type="button" id="test">测试配置</button><button class="btn primary" type="submit" form="f" id="ok">保存</button><span id="msg"></span></div></div><div class="panel-body">
 ${editable}
 <div id="result" class="pg-result" hidden></div>
 </div></section>
@@ -204,6 +258,18 @@ ${editable}
 const form = document.getElementById("f");
 const msg = document.getElementById("msg");
 const ok = document.getElementById("ok");
+const depBoxes = [...form.querySelectorAll("[data-dep]")];
+const syncDeps = () => {
+  for (const box of depBoxes) {
+    const src = form.elements[box.getAttribute("data-dep")];
+    const vals = (box.getAttribute("data-dep-values") || "").split(",");
+    const on = src ? vals.includes(src.value) : true;
+    for (const el of box.querySelectorAll("input,select,textarea")) el.disabled = !on;
+    box.classList.toggle("pg-off", !on);
+  }
+};
+form.addEventListener("change", syncDeps);
+syncDeps();
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const data = {};

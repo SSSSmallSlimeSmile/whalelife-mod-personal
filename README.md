@@ -99,11 +99,19 @@ copy plugins\peek\data\config.example.json plugins\peek\data\config.json
 
 ```json
 {
-  "python": "",
-  "focus": "auto",
+  "seconds": 10,
+  "max_frames": 6,
   "max_width": 1600,
+  "focus": "auto",
   "tier_style": "native",
-  "tier_lock": 0
+  "tier_lock": 0,
+  "text_layer": false,
+  "vision_mode": "chat",
+  "vision_model": "",
+  "ollama_model": "qwen3-vl:4b",
+  "ollama": "http://127.0.0.1:11434",
+  "vram_guard": true,
+  "need_vram_mb": 5200
 }
 ```
 
@@ -117,6 +125,19 @@ copy plugins\peek\data\config.example.json plugins\peek\data\config.json
 
 参数：`seconds`（2–60，默认 10）、`max_frames`（1–12，默认 6）、`max_width`（400–4096，默认 1600）。
 
+### 和 eyes 同时开会把显存挤爆
+
+这是本机真撞过的：peek 和 eyes 一起开着，一台 8 GB 显存的笔记本直接卡死，只剩音频还在响。
+
+原因不复杂。`eyes` 是上游自带的一帧看屏插件，默认把本地 `qwen3-vl:4b` 往显卡里塞（大约 4.7–5.2 GB）；它目录下没有 `config.json`，所以一直用写死的默认值。peek 走 `vision_mode: "ollama"` 时也要这份显存，GPT-SoVITS 还常住在卡上，几样一挤就溢出了。
+
+所以：
+
+- **二选一。** 想看一段时间里屏幕怎么变，用 peek；只想知道当前这一帧是什么，用 eyes。别同时开
+- 停用方式：插件管理里关掉，或者把 `eyes` 写进 `config/plugins.json` 的 `disabled` 数组
+- peek 启动时会读一次 `plugins.json`，发现 eyes 还开着就写一条警告到日志，配置页顶部也会挂一条红字
+- `vision_mode: "chat"`（默认）不走本地显卡，这条路上省显存；但 eyes 自己那份照吃，跟 peek 走哪条路无关
+- `vram_guard` 只在真要去加载本地模型时才检查，管不了 eyes
 没验过的：`pip install -r requirements.txt` 没真跑过（那会动本机环境），依赖能装上是从机器上已装的包推的；多显示器行为；Linux/macOS 完全没试过。
 
 ## ear 麦克风听写
