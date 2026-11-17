@@ -7,11 +7,12 @@
  * 与 eyes 的区别：eyes 只看当前一帧；这里抓一段，只为「画面变了」的帧付 token。
  */
 import type { Context } from "../../core/context.ts";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { readFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readBody, renderPage, sanitize } from "./ui.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -280,6 +281,96 @@ export async function apply(ctx: Context) {
       if (data.note) parts.push(`边车备注：${data.note}`);
       return parts.join("\n");
     },
+  });
+
+  ctx.web.api("/plugins/peek/test", async (_req: any, res: any) => {
+    const reply = (code: number, body: any) => {
+      res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify(body));
+    };
+    const lines: string[] = [];
+    let ok = true;
+    try {
+      await reload();
+
+      // 1. python 起不起得来
+      const py = resolvePython(cfg.python);
+      try {
+        const out = spawnSync(py, ["-c", "import sys; print(sys.version.split()[0])"], { timeout: 15000, encoding: "utf8" });
+        if (out.error || out.status !== 0) {
+          ok = false;
+          lines.push(`[×] Python：${py} 调不动 —— ${out.error?.message ?? String(out.stderr ?? "").trim() ?? ("退出码 " + out.status)}`);
+        } else {
+          lines.push(`[✓] Python ${String(out.stdout ?? "").trim()}：${py}`);
+        }
+      } catch (error: any) {
+        ok = false;
+        lines.push(`[×] Python：${py} 调不动 —— ${error?.message ?? error}`);
+      }
+
+      // 2. 边车脚本在不在
+      const script = resolve(cfg.script);
+      if (existsSync(script)) lines.push(`[✓] 边车脚本：${script}`);
+      else { ok = false; lines.push(`[×] 边车脚本不在：${script}`); }
+
+      // 3. 视觉模型在不在 ollama 里
+      try {
+        const r = await fetch(`${cfg.ollama}/api/tags`, { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data: any = await r.json();
+        const names: string[] = (data?.models ?? []).map((m: any) => String(m?.name ?? ""));
+        const want = String(cfg.vision_model ?? "");
+        const hit = names.includes(want) || names.includes(want + ":latest") || names.some((n) => n.startsWith(want + ":"));
+        if (hit) lines.push(`[✓] 视觉模型 ${want} 在 ollama 里（共 ${names.length} 个模型）`);
+        else {
+          ok = false;
+          lines.push(`[×] 视觉模型 ${want} 不在 ollama 里。现有：${names.slice(0, 8).join("、") || "一个都没有"}`);
+        }
+      } catch (error: any) {
+        ok = false;
+        lines.push(`[×] 连不上 ollama（${cfg.ollama}）：${error?.message ?? error}`);
+      }
+
+      // 4. 出图目录能不能建
+      try {
+        await mkdir(cfg.shot_dir, { recursive: true });
+        lines.push(`[✓] 出图目录：${cfg.shot_dir}`);
+      } catch (error: any) {
+        ok = false;
+        lines.push(`[×] 出图目录建不出来：${cfg.shot_dir} —— ${error?.message ?? error}`);
+      }
+
+      lines.push("");
+      lines.push("这只是配置检查。真要出图，用 see_now 抓一段。");
+      return reply(200, { ok, lines });
+    } catch (error: any) {
+      return reply(500, { ok: false, lines: [`检查本身出错：${error?.message ?? error}`] });
+    }
+  });
+
+  ctx.web.page(
+    "/plugins/peek/",
+    async (_req, res) => {
+      await reload();
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(renderPage(cfg));
+    },
+    { title: "看屏", navigation: true },
+  );
+
+  ctx.web.api("/plugins/peek/save", async (req, res) => {
+    try {
+      const patchIn = sanitize(await readBody(req));
+      const keys = Object.keys(patchIn);
+      if (!keys.length) throw new Error("没有可保存的字段");
+      const merged = { ...(await ctx.config.read<any>("config.json").catch(() => null)), ...patchIn };
+      await ctx.config.save("config.json", merged);
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ ok: true, saved: keys }));
+    } catch (error: any) {
+      res.writeHead(400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ ok: false, error: error?.message ?? String(error) }));
+    }
   });
 
   ctx.effect(() => () => {

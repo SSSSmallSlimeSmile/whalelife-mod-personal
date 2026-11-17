@@ -1,0 +1,5 @@
+id: mouth
+name: 嘴巴
+description: 把回复念出来（GPT-SoVITS）；聊天页每条回复旁边有「念」按钮，默认不自动念
+version: 0.1.0
+apiVersion: "1"

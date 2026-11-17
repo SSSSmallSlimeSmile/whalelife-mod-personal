@@ -1,0 +1,14 @@
+{
+  "enabled": false,
+  "url": "http://127.0.0.1:9880",
+  "ref_audio": "",
+  "prompt_text": "",
+  "text_lang": "zh",
+  "prompt_lang": "zh",
+  "speed": 1.2,
+  "max_chars": 110,
+  "timeout_ms": 120000,
+  "engine": "local",
+  "cloud_key": "",
+  "cloud_voice": "tide"
+}
