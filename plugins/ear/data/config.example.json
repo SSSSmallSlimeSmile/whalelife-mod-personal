@@ -1,0 +1,18 @@
+{
+  "python": "",
+  "sensevoice_dir": "",
+  "speak_reply": false,
+  "device": 0,
+  "engine": "sensevoice",
+  "model": "base",
+  "language": "zh",
+  "initial_prompt": "",
+  "silence": 0.7,
+  "max_len": 30,
+  "target_session": "",
+  "f9_hotkey": "F9",
+  "f9_python": "",
+  "auto_start_f9": false,
+  "stop_f9_on_exit": true,
+  "auto_start": false
+}

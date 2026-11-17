@@ -16,6 +16,8 @@
 |---|---|---|---|
 | `ledger` | 0.1.0 | 用量账本。扫会话记录里已有的 `request_usage`，页面在「插件 → 账本」，另有只读工具 `ledger_today` | 可用 |
 | `peek` | 0.1.0 | 看屏取帧。抓一段屏幕，只留画面真正变化的那几帧，拼成一张图交给视觉模型 | 可用 |
+| `ear` | 0.1.0 | 麦克风听写。按住热键说话，识别成字投进会话，可选让 `mouth` 念回复 | 能用（依赖本机模型） |
+| `chime` | 0.1.0 | 提示音。一轮任务跑完、回复真的发出去后，在电脑上响一声 | 能用（本机验过出声） |
 | `mouth` | 0.1.0 | 把一段文字念出来。本地 GPT-SoVITS 或 DeepSeek 云端 TTS 二选一 | 可用（云端模式依赖 key，本地模式依赖本机模型） |
 
 ## 安装
@@ -26,10 +28,22 @@
 plugins/
 ├── ledger/
 ├── peek/
+├── ear/
+├── chime/
 └── mouth/
 ```
 
-三个插件互不依赖，可以只装其中一个。
+`ledger`、`peek` 完全独立，可以只装其中一个。
+
+`ear` 和 `mouth` 有联动，也可以各装各的：
+
+| 装了哪些 | 效果 |
+|---|---|
+| 只装 `mouth` | 只能手动念：页面上的「念一句试试」，或别的插件调 `mouth_say` 工具 |
+| 只装 `ear` | 能听写、能打字进会话，但不会出声 |
+| 两个都装 | 按热键说完话，回复自动念出来（`ear` 的「F9 说完后自动念回复」勾上） |
+
+`chime` 与谁都不依赖。
 
 ---
 
@@ -86,6 +100,65 @@ copy plugins\peek\data\config.example.json plugins\peek\data\config.json
 
 没验过的：`pip install -r requirements.txt` 没真跑过（那会动本机环境），依赖能装上是从机器上已装的包推的；多显示器行为；Linux/macOS 完全没试过。
 
+## ear 麦克风听写
+
+**装之前要准备三样东西**，缺一样就跑不起来：
+
+1. **Python 环境**：SenseVoice 要 `funasr`、`torch`、`soundfile`、`sounddevice`、`scipy`、`numpy`。`sounddevice` 最容易漏，漏了边车自检会报 `No module named 'sounddevice'`
+2. **SenseVoice 模型**：`SenseVoiceSmall` 那套权重，存成本地目录
+3. **配置**：`data/config.example.json` 复制成 `data/config.json`
+
+```
+copy plugins\ear\data\config.example.json plugins\ear\data\config.json
+```
+
+| 字段 | 说明 |
+|---|---|
+| `python` | 跑边车的解释器绝对路径。留空则用 PATH 里的 `python` |
+| `sensevoice_dir` | SenseVoice 模型目录。也认环境变量 `WHALELIFE_SENSE_DIR` |
+| `device` | 麦克风设备号。`0` 常常不是你要的那个，先 `python -c "import sounddevice; print(sounddevice.query_devices())"` 看清楚 |
+| `engine` | 目前只有 `sensevoice` |
+| `model` | 只给 whisper 分支用。**SenseVoice 走这条时读不到它，填了也不生效**，留着是给以后接 whisper |
+| `language` / `initial_prompt` | 识别语言与提示词 |
+| `silence` | 静音多久算一句结束，秒 |
+| `max_len` | 单句最长秒数 |
+| `target_session` | 投进哪个会话，留空就用当前 |
+| `speak_reply` | 说完后要不要让 `mouth` 念回复（需要装 `mouth`） |
+| `f9_hotkey` | 全局热键，默认 `F9`，支持 `Ctrl+F9`、`Alt+F9` 这类组合 |
+| `f9_python` | F9 那个外部进程用哪个解释器，留空用 `pythonw` |
+| `auto_start_f9` | 随 WhaleLife 一起拉起 F9 进程 |
+| `stop_f9_on_exit` | WhaleLife 关闭时一起收掉 |
+
+**全局热键需要一个外部小进程** `f9/hold_to_talk.py`。浏览器的按键只在网页有焦点时才收得到，所以必须跳出网页。它用 Windows `RegisterHotKey` 占住那个键——**游戏里原本用这个键的功能就用不了了**，换一个键在页面上选。
+
+- 启动：页面上点「启动」，或双击 `f9/start-f9.bat`
+- 它按 `f9.json` 里的配置工作，仓库里给的是 `f9.example.json`，复制成 `f9.json` 再改
+- 录音结束会调 `/plugins/ear/utter` 投递，然后把识别结果当普通消息进会话
+
+没验过的：非 Windows；别的麦克风设备；whisper 分支代码在但没接过；长时间连续使用会不会积压。
+
+## chime 提示音
+
+一轮任务跑完、回复真的发出去之后，响一声。
+
+```
+copy plugins\chime\data\config.example.json plugins\chime\data\config.json
+```
+
+| 字段 | 说明 |
+|---|---|
+| `sound_path` | 音效文件或目录。填目录时每次随机抽一个 |
+| `min_seconds` | 两次提示音之间的最小间隔，防止连续响 |
+| `cooldown_seconds` | 同一段话期间不重复响的冷却时间 |
+| `channels` | 哪些通道的回复触发提示音，空数组表示不限 |
+| `enabled` | 总开关 |
+
+**长音频别直接放**：超过十秒的会一直占着，把后面的提示音全挡掉。切成 1–4 秒的独立短音丢进一个目录，让它随机抽。
+
+音效文件不入库，自己准备。示例里 `sound_path` 是空的。
+
+没验过的：别的机器、别的音频驱动。声音出不来时先查 Windows 默认输出设备是不是空的——`SoundPlayer` 放不出来就是因为这个，不是插件没跑。
+
 ## mouth 念出来
 
 把文字合成为语音并播放。两种引擎：
@@ -97,14 +170,20 @@ copy plugins\peek\data\config.example.json plugins\peek\data\config.json
 
 配置页在「插件 → 嘴巴」。`config.example.json` 里所有跟路径、密钥有关的字段都是空的，按你的机器填。
 
+云端音色可以点「读取云端音色」去问一次——DeepSeek 没有公开的音色列表接口，但用一个非法音色发请求，它会在报错里把合法值列出来，插件就是解析这个。
+
 行为说明：
 
 - 念之前会过滤掉代码块、表格、`[[img:]]` 标记和文件路径，路径换成「（略）」
+- 整段只有代码和表格时不出声，不在耳边念废话
 - 长文本按句切成不超过 110 字的段，逐段合成、顺序播放
+- 上一段没念完时新来的内容排队，最多存 2 条，超过丢最旧的
 - 云端返回的 wav 头里有流式占位值（`0xFFFFFFFF`），播放前会按实际长度重算，不改就用 `SoundPlayer` 放不出来
 - 播放走 `SoundPlayer.PlaySync`，**系统默认输出设备为空的话会「合成成功但没声音」**，这是 Windows 的坑，不是插件没跑
 
-与其他插件的关系：单独装 `mouth` 只能手动念（页面上的「念一句试试」）或由别的插件调 `mouth_say` 工具。要"说完话自动念"，需要配合 `ear` 插件（在 personal-test 库里）。
+与其他插件的关系：单独装 `mouth` 只能手动念或由别的插件调 `mouth_say`。要"说完话自动念"，得配合 `ear`。
+
+网页里打字会不会念，看页面上的「自动念 · 什么时候出声」：选「只有按 F9 说话才念」就只在 `ear` 那几条回，选「每一句回复都念」则网页里也念。两条来源互斥，同一句不会念两遍。
 
 没验过的：云端模式只在本人的 key 上试过；`SoundPlayer` 在别的机器上、其他音频驱动下的表现。
 
@@ -122,5 +201,8 @@ MIT，全文见 `LICENSE`。
 
 - `ledger`：价格表是手抄的，供应商调价不会自动跟着变
 - `peek`：视觉模型用本地 Ollama 的 `qwen3-vl:4b`，没配就报错
-- `mouth`：念之前不排队打断，正在念的时候来的新内容会排进队列（最多存 2 条，超过丢最旧的）
-- 三个插件都只在 Windows 上跑过
+- `ear`：`model` 字段目前是死的（只有 whisper 分支读它，而引擎只有 SenseVoice）
+- `ear`：全局热键会占住那个键，游戏里撞键要换
+- `chime`：长音频会把后续提示音全挡掉，建议切成短音
+- `mouth`：念的是完整回复再过滤，所以等长回复写完才开口
+- 五个插件都只在 Windows 上跑过

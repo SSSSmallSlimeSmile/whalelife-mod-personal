@@ -113,13 +113,14 @@ const PAGE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 body{background:var(--bg)}
 .wrap{max-width:1120px;margin:0 auto;padding:26px 22px 64px}
 </style></head><body><div class="wrap">
-<div class="page-heading"><div><div class="eyebrow">LEDGER</div><h1>账本</h1>
-<p>按天、按 provider 与模型统计 token 用量，金额按当前价目重算，仅供参考，不是账单。只统计，不拦请求。</p></div>
-<div class="heading-actions"><select id="days" aria-label="统计范围">
+<section class="panel">
+<div class="panel-header"><h2>用量</h2><div class="pg-actions"><select id="days" aria-label="统计范围">
 <option value="1">今天</option><option value="7" selected>最近 7 天</option><option value="30">最近 30 天</option>
 </select><button id="refresh" class="btn small" type="button">重算</button></div></div>
+<div class="panel-body">
+<p class="pg-hint" style="margin:0 0 16px">按天、按 provider 与模型统计 token 用量，金额按当前价目重算，仅供参考，不是账单。只统计，不拦请求。</p>
 <div id="body"><section class="panel empty">正在读取账本…</section></div>
-</div>
+</div></div></section>
 <script>
 var COLORS = ["#5b7cfa","#8b5cf6","#22c55e","#f59e0b","#ef4444","#06b6d4","#e879f9","#84cc16"];
 function esc(s){return String(s == null ? "" : s).replace(/[&<>"]/g, function(c){
