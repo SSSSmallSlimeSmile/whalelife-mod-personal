@@ -1,5 +1,6 @@
 {
   "enabled": false,
+  "auto_scope": "f9",
   "url": "http://127.0.0.1:9880",
   "ref_audio": "",
   "prompt_text": "",

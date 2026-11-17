@@ -87,13 +87,18 @@ copy plugins\peek\data\config.example.json plugins\peek\data\config.json
 ```json
 {
   "python": "",
-  "focus": "auto"
+  "focus": "auto",
+  "max_width": 1600,
+  "tier_style": "native",
+  "tier_lock": 0
 }
 ```
 
 - `python` 留空 → 依次找环境变量 `WHALELIFE_PEEK_PYTHON`、然后 PATH 里的 `python`
 - Windows 上 PATH 里的 `python` 常常是应用商店的占位符，一跑就报「边车没跑成」。装了 Python 却报这个，就把 `python` 写成绝对路径
 - `focus`：`auto` 按前台窗口挑区域，`whole` 整屏抓
+- `tier_style`：档位整体偏移，`native` / `up` / `down`
+- `tier_lock`：`1`–`3` 锁死一档，`0` 不锁（不锁时按画面变化量自动分档）
 - 改配置不用重启，每次调用重读
 
 参数：`seconds`（2–60，默认 10）、`max_frames`（1–12，默认 6）、`max_width`（400–4096，默认 1600）。
@@ -128,6 +133,7 @@ copy plugins\ear\data\config.example.json plugins\ear\data\config.json
 | `f9_python` | F9 那个外部进程用哪个解释器，留空用 `pythonw` |
 | `auto_start_f9` | 随 WhaleLife 一起拉起 F9 进程 |
 | `stop_f9_on_exit` | WhaleLife 关闭时一起收掉 |
+| `auto_start` | 监听麦克风那个边车进程要不要随 WhaleLife 一起起，默认 `false` |
 
 **全局热键需要一个外部小进程** `f9/hold_to_talk.py`。浏览器的按键只在网页有焦点时才收得到，所以必须跳出网页。它用 Windows `RegisterHotKey` 占住那个键——**游戏里原本用这个键的功能就用不了了**，换一个键在页面上选。
 
@@ -147,7 +153,9 @@ copy plugins\chime\data\config.example.json plugins\chime\data\config.json
 
 | 字段 | 说明 |
 |---|---|
-| `sound_path` | 音效文件或目录。填目录时每次随机抽一个 |
+| `sound_path` | 音效文件或目录。填目录时每次随机抽一个。**优先用它** |
+| `wav_path` | 旧字段。`sound_path` 留空时才回退到它，新配置别填 |
+| `log` | 排查用的日志文件路径，留空不写 |
 | `min_seconds` | 两次提示音之间的最小间隔，防止连续响 |
 | `cooldown_seconds` | 同一段话期间不重复响的冷却时间 |
 | `channels` | 哪些通道的回复触发提示音，空数组表示不限 |
@@ -169,6 +177,8 @@ copy plugins\chime\data\config.example.json plugins\chime\data\config.json
 | DeepSeek 云端 | 一把 DeepSeek API Key；音色 `stella`（女）/ `tide`（男） |
 
 配置页在「插件 → 嘴巴」。`config.example.json` 里所有跟路径、密钥有关的字段都是空的，按你的机器填。
+
+`auto_scope`：`f9`（默认，只有按 F9 说话才自动念）或 `all`（每句回复都念）。
 
 云端音色可以点「读取云端音色」去问一次——DeepSeek 没有公开的音色列表接口，但用一个非法音色发请求，它会在报错里把合法值列出来，插件就是解析这个。
 

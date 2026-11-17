@@ -1,5 +1,7 @@
 {
   "python": "",
   "focus": "auto",
-  "max_width": 1600
+  "max_width": 1600,
+  "tier_style": "native",
+  "tier_lock": 0
 }
