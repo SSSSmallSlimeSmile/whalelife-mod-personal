@@ -1,0 +1,5 @@
+id: peek
+name: 看屏
+description: 抓一段屏幕，按画面变化取帧，多帧拼成一张图交给本地视觉模型描述
+version: 0.1.0
+apiVersion: "1"

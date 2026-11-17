@@ -1,0 +1,5 @@
+id: ledger
+name: 账本
+description: 按价目表把 request_usage 重算成参考金额，自己出一个页面；只读，不拦请求
+version: 0.1.0
+apiVersion: "1"
