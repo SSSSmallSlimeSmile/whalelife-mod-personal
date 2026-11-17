@@ -16,7 +16,15 @@
    ```
    ollama pull qwen3-vl:4b
    ```
-4. **Python 解释器**。装出来的 `python` 不一定在 PATH 里（Windows 上可能只是商店的占位别名），三种指定方式，优先级从高到低：
+4. **配置**。仓库里只放 `data/config.example.json`，复制成 `data/config.json` 再按自己的环境改：
+
+   ```
+   copy data\config.example.json data\config.json
+   ```
+
+   两个字段：`python`（解释器完整路径，留空就往下找）和 `focus`（`whole` / `content` / `auto`，默认 `auto`）。
+
+5. **Python 解释器**。装出来的 `python` 不一定在 PATH 里（Windows 上可能只是商店的占位别名），三种指定方式，优先级从高到低：
    - 插件数据目录下的 `data/config.json` 里的 `"python"` 字段，填解释器的完整路径
      （是 `plugins/peek/data/config.json`，不是 `plugins/peek/config.json`——插件配置一律在 `data/` 下，放错地方会被当成没有配置，静默退回 `python`）
    - 环境变量 `WHALELIFE_PEEK_PYTHON`
