@@ -27,6 +27,8 @@ const DEFAULTS = {
   timeout_ms: 120_000,
   out_dir: join(HERE, "data", "out"),
   engine: "local",
+  cloud_model: "",
+  cloud_path: "/tools/tts",
   cloud_url: "https://api.deepseek.com/v1/tools/tts",
   cloud_key: "",
   cloud_voice: "stella",
@@ -125,6 +127,14 @@ export function fixWavHeader(buf: Buffer): Buffer {
   return copy;
 }
 
+/** base_url 去尾斜杠、path 补前导斜杠，拼成一个地址。 */
+export function joinUrl(base: string, path: string): string {
+  const b = String(base ?? "").trim().replace(/\/+$/, "");
+  const p = String(path ?? "").trim();
+  if (!b) return p;
+  return b + (p.startsWith("/") ? p : "/" + p);
+}
+
 function replyJson(res: any, status: number, body: unknown) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
@@ -175,18 +185,44 @@ export async function apply(ctx: Context) {
     return cfg;
   }
 
-  async function synthCloud(text: string) {
+  /** 云端合成要的三样：地址、key、音色。配了 tts 模型就用模型配置，否则用本插件自己填的。 */
+  function cloudTarget() {
+    const id = String(cfg.cloud_model ?? "").trim();
+    if (id) {
+      const link = ctx.models.connection(id);
+      const key = expand(link.api_key);
+      if (!key) throw new Error(`模型配置「${link.name}」里没有可用的 key`);
+      return {
+        url: joinUrl(link.base_url, String(cfg.cloud_path || "/tools/tts")),
+        key,
+        voice: String(cfg.cloud_voice || "stella"),
+        where: `模型配置「${link.name}」`,
+      };
+    }
     const key = expand(cfg.cloud_key) || mainConfigKey();
-    if (!key) throw new Error("没配 DeepSeek 的 key，主配置里也没找到 deepseek 的 provider");
+    if (!key) {
+      throw new Error("没选 tts 模型，本插件也没填云端 Key，主配置里也找不到 deepseek 的 provider");
+    }
+    return {
+      url: String(cfg.cloud_url || "https://api.deepseek.com/v1/tools/tts"),
+      key,
+      voice: String(cfg.cloud_voice || "stella"),
+      where: "本插件自己填的地址",
+    };
+  }
+
+  async function synthCloud(text: string) {
+    const target = cloudTarget();
+    const key = target.key;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), Number(cfg.cloud_timeout_ms) || 60_000);
     try {
-      const res = await fetch(String(cfg.cloud_url || "https://api.deepseek.com/v1/tools/tts"), {
+      const res = await fetch(target.url, {
         method: "POST",
         headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
-          voice_id: String(cfg.cloud_voice || "stella"),
+          voice_id: target.voice,
           format: String(cfg.cloud_format || "wav"),
           filter_markdown: true,
         }),
@@ -202,7 +238,7 @@ export async function apply(ctx: Context) {
     } catch (error: any) {
       if (controller.signal.aborted) throw new Error("云端合成超时");
       if (typeof error?.message === "string" && error.message.startsWith("云端")) throw error;
-      throw new Error(`连不上云端合成（${cfg.cloud_url}）：${error?.message ?? error}`);
+      throw new Error(`连不上云端合成（${target.url}）：${error?.message ?? error}`);
     } finally {
       clearTimeout(timer);
     }
@@ -273,7 +309,7 @@ export async function apply(ctx: Context) {
     async (_req: any, res: any) => {
       await reload();
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-      res.end(renderPage(cfg));
+      res.end(renderPage(cfg, ctx.models.list("tts")));
     },
     { title: "嘴巴", navigation: true },
   );
@@ -377,6 +413,6 @@ export async function apply(ctx: Context) {
 
   await reload();
   ctx.logger?.info?.(
-    `嘴巴就绪（引擎 ${cfg.engine === "deepseek" ? "云端 " + cfg.cloud_voice : "本地 " + cfg.url}）`,
+    `嘴巴就绪（引擎 ${cfg.engine === "deepseek" ? "云端 " + cfg.cloud_voice + (cfg.cloud_model ? " · " + cfg.cloud_model : "") : "本地 " + cfg.url}）`,
   );
 }

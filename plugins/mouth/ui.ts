@@ -41,6 +41,11 @@ export function sanitize(input: any): Record<string, unknown> {
     const value = String(src.cloud_url ?? "").trim();
     if (value) out.cloud_url = value.replace(/\/+$/, "");
   }
+  if ("cloud_model" in src) out.cloud_model = String(src.cloud_model ?? "").trim();
+  if ("cloud_path" in src) {
+    const value = String(src.cloud_path ?? "").trim();
+    if (value) out.cloud_path = value.startsWith("/") ? value : "/" + value;
+  }
   if ("cloud_key" in src) out.cloud_key = String(src.cloud_key ?? "").trim();
   if ("cloud_voice" in src) {
     const value = String(src.cloud_voice ?? "").trim();
@@ -85,6 +90,21 @@ const STYLE = `
 @media(max-width:760px){.panel-body .pg-pair{grid-template-columns:1fr}}
 `;
 
+function ttsOptions(current: any, list: any[]): string {
+  const now = String(current ?? "").trim();
+  const rows = ["<option value=\"\">不选，用下面自己填的地址和 Key</option>"];
+  for (const one of Array.isArray(list) ? list : []) {
+    const id = String(one?.id ?? "");
+    if (!id) continue;
+    const label = String(one?.name ?? "") || String(one?.model ?? "") || id;
+    rows.push(`<option value="${id}"${id === now ? " selected" : ""}>${label}（${String(one?.provider ?? "")}）</option>`);
+  }
+  if (now && !rows.some((row) => row.includes(`value="${now}"`))) {
+    rows.push(`<option value="${now}" selected>（当前配置里没有这个名字：${now}）</option>`);
+  }
+  return rows.join("");
+}
+
 function voiceOptions(current: any): string {
   const now = String(current ?? "stella").trim() || "stella";
   const list = ["stella", "tide"];
@@ -94,7 +114,7 @@ function voiceOptions(current: any): string {
     .join("");
 }
 
-export function renderPage(cfg: any): string {
+export function renderPage(cfg: any, tts: any[] = []): string {
   const c = cfg ?? {};
   const esc = (value: any) =>
     String(value ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch] as string);
@@ -123,8 +143,11 @@ export function renderPage(cfg: any): string {
 </div>
 
 <p class="pg-sub">云端专用 · 只在选了云端时可填</p>
+<div class="pg-pair">
+  <div class="pg-item"><div class="pg-row"><label class="pg-label" for="cloud_model">用哪条 tts 模型</label><select id="cloud_model"${dis}>${ttsOptions(c.cloud_model, tts)}</select><p class="pg-hint">在「管理 → 模型」里登记为 tts 的那些。选了它，地址和 Key 就从那条模型读，本页不用再填；不选就还是下面自己填。</p></div></div>
+</div>
 <div class="pg-pair" id="cloudrow">
-  <div class="pg-item"><div class="pg-row"><label class="pg-label" for="cloud_key">云端 API Key</label><input type="password" id="cloud_key" value="${esc(c.cloud_key)}" placeholder="留空就用主配置里 DeepSeek 那把"${dis}><p class="pg-hint">留空会自动读主配置里 id 含 deepseek 的 provider。</p></div></div>
+  <div class="pg-item"><div class="pg-row"><label class="pg-label" for="cloud_key">云端 API Key</label><input type="password" id="cloud_key" value="${esc(c.cloud_key)}" placeholder="留空就用主配置里 DeepSeek 那把"${dis}><p class="pg-hint">留空会自动读主配置里 id 含 deepseek 的 provider。上面选了 tts 模型的话，这一格就不用了。</p></div></div>
   <div class="pg-item"><div class="pg-row"><label class="pg-label" for="cloud_voice">云端音色</label><select id="cloud_voice"${dis}>${voiceOptions(c.cloud_voice)}</select><p class="pg-hint">云端没给列表接口，点这里让它自己报一遍合法音色<button class="btn" type="button" id="loadvoices">读取云端音色</button></p></div></div>
 </div>
 
@@ -159,10 +182,11 @@ function show(kind, text) {
 }
 function cloudSync() {
   const isCloud = $("engine").value === "deepseek";
-  $("cloud_key").disabled = !isCloud;
+  const fromModel = $("cloud_model").value !== "";
+  $("cloud_key").disabled = !isCloud || fromModel;
   $("cloud_voice").disabled = !isCloud;
   $("loadvoices").disabled = !isCloud;
-  $("cloudrow").style.opacity = isCloud ? "1" : "0.45";
+  $("cloudrow").style.opacity = isCloud && !fromModel ? "1" : "0.45";
 }
 async function post(path, body) {
   const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
@@ -171,6 +195,7 @@ async function post(path, body) {
   return value;
 }
 $("engine").onchange = cloudSync;
+$("cloud_model").onchange = cloudSync;
 cloudSync();
 $("loadvoices").onclick = async () => {
   const select = $("cloud_voice");
@@ -198,6 +223,7 @@ $("save").onclick = async () => {
     max_chars: $("max_chars").value,
     auto_scope: $("auto_scope").value,
     engine: $("engine").value,
+    cloud_model: $("cloud_model").value,
     cloud_key: $("cloud_key").value,
     cloud_voice: $("cloud_voice").value,
   };
