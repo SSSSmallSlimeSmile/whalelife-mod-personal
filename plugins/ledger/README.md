@@ -16,7 +16,6 @@
 {
   "enabled": true,
   "days": 7,
-  "max_files": 400,
   "include_judge_usage": false
 }
 ```
@@ -26,7 +25,6 @@
 | `enabled` | `true` | 关掉就不注册工具和页面 |
 | `days` | `7` | 页面默认看最近几天，页面上也能临时改 |
 | `include_judge_usage` | `false` | 要不要额外读 `memory/usage-judge.jsonl`。**没装那个功能的扩展就保持 false**，那个文件不存在，打开只是白读一次 |
-| `max_files` | `400` | **目前无效**，代码里没有读它（见「已知短板」） |
 
 ## 页面
 
@@ -58,7 +56,6 @@
 
 ## 已知短板
 
-- `max_files` 是死字段，代码里没读它。留着只是占位
 - 只认 `memory/episodes/*.jsonl` 这一种来源。别的记录方式它看不见
 - 价目表要手动改。上游调价它不会自己跟
 - 只在本人 Windows 机器上跑过

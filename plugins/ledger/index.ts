@@ -26,8 +26,6 @@ const DEFAULTS = {
   enabled: true,
   /** 明细表默认看几天。 */
   days: 7,
-  /** 每轮最多读多少个 jsonl 文件；会话多了也不至于卡住页面。 */
-  max_files: 400,
   /** 额外统计 memory/usage-judge.jsonl（按难度挑模型的扩展才有）。 */
   include_judge_usage: false,
 };
