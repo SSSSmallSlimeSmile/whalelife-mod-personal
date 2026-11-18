@@ -4,7 +4,6 @@
   "speak_reply": false,
   "device": 0,
   "engine": "sensevoice",
-  "model": "base",
   "language": "zh",
   "initial_prompt": "",
   "silence": 0.7,
