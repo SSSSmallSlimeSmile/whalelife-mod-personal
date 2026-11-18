@@ -24,6 +24,7 @@
 | `ear` | 0.1.0 | 麦克风听写。按住热键说话，识别成字投进会话，可选让 `mouth` 念回复 | 能用（依赖本机模型） | [plugins/ear](plugins/ear) |
 | `chime` | 0.1.0 | 提示音。一轮任务跑完、回复真的发出去后，在电脑上响一声 | 能用（本机验过出声） | [plugins/chime](plugins/chime) |
 | `mouth` | 0.1.0 | 把一段文字念出来。本地 GPT-SoVITS 或 DeepSeek 云端 TTS 二选一 | 可用（云端模式依赖 key，本地模式依赖本机模型） | [plugins/mouth](plugins/mouth) |
+| `voice` | 0.2.0 | 嗓子。管 GPT-SoVITS 服务的启动/停止/状态，带配置页 | 可用（**不能单独跑**，要先有自己的 GPT-SoVITS） | [plugins/voice](plugins/voice) |
 
 ## 安装
 
@@ -36,7 +37,8 @@ plugins/
 ├── comfy/
 ├── ear/
 ├── chime/
-└── mouth/
+├── mouth/
+└── voice/
 ```
 
 `ledger`、`peek` 完全独立，可以只装其中一个。
@@ -303,6 +305,31 @@ copy plugins\chime\data\config.example.json plugins\chime\data\config.json
 
 ---
 
+## voice 嗓子
+
+**这个插件不能单独跑。** 它只是 WhaleLife 和 GPT-SoVITS 之间的接口——你得先自己装好 GPT-SoVITS（服务在 `http://127.0.0.1:9880`）、准备好一份参考音频和它的文本，否则装上也出不了声。页面上有状态条会如实告诉你 9880 通不通。
+
+来源：本机自建。从 AstrBot 那边的语音能力搬过来的，没有对应的上游仓库（作者公开的 8 个仓库里没有 voice，主仓库 `plugins/` 下也只有一份 `AGENTS.md`）。
+
+页面在「插件 → 嗓子」：
+
+- 状态条显示端口通不通、占着端口的 PID
+- 「启动服务」「停止服务」按端口找进程，连子进程一起收
+- ☑ WhaleLife 开启时自动拉起语音合成 → `auto_start`
+- ☑ 关闭 WhaleLife 时一并关掉语音合成 → `stop_on_exit`
+- 下面能改解释器、工作目录、监听地址、端口、启动参数、日志文件
+
+两个勾选只在下一次启动/退出时生效；要用立刻启停，点按钮。
+
+工具：`speak` 合成并播放，`gsv_start` / `gsv_stop` / `gsv_status` 管服务。
+
+`config.example.json` 里路径全空，按你的机器填。`data/config.json` 不进库。
+
+和其他插件的关系：`mouth` 的「本地 GPT-SoVITS」引擎最终也是打到这个 9880 端口。两个都装的话，用这个页面启停服务，在 `mouth` 页面选合成方式，各管一段，不冲突。
+
+没验过的：别的机器、别的 GPT-SoVITS 版本、别的 Python 环境。本机是便携版 ComfyUI 以外的独立 venv（6.8G，含模型）。
+
+---
 ## 许可
 
 MIT，全文见 `LICENSE`。
@@ -320,4 +347,5 @@ MIT，全文见 `LICENSE`。
 - `mouth`：念的是完整回复再过滤，所以等长回复写完才开口
 - `comfy`：本身不带 ComfyUI，没装就只能看图不能出图；重绘（局部重画）没有做成工具，只能出整图
 - `comfy`：`image_view` 只画坐标网格，不测像素颜色，报位置得自己看图
-- 六个插件都只在 Windows 上跑过
+- 七个插件都只在 Windows 上跑过
+- `voice`：只是 WhaleLife 与 GPT-SoVITS 之间的接口，没装 GPT-SoVITS、没有参考音频就没有声音
