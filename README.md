@@ -14,14 +14,16 @@
 
 ## 目录
 
-| 插件 | 版本 | 做什么 | 状态 |
-|---|---|---|---|
-| `ledger` | 0.1.0 | 用量账本。扫会话记录里已有的 `request_usage`，页面在「插件 → 账本」，另有只读工具 `ledger_today` | 可用 |
-| `peek` | 0.1.0 | 看屏取帧。抓一段屏幕，只留画面真正变化的那几帧，拼成一张图交给视觉模型 | 可用 |
-| `comfy` | 0.2.0 | 生图与看图。把 ComfyUI 接成出图后端；`image_view` 把图片文件直接送进上下文，带原图像素坐标 | 可用（**本身不带 ComfyUI**，没装 ComfyUI 只能看图、不能出图） |
-| `ear` | 0.1.0 | 麦克风听写。按住热键说话，识别成字投进会话，可选让 `mouth` 念回复 | 能用（依赖本机模型） |
-| `chime` | 0.1.0 | 提示音。一轮任务跑完、回复真的发出去后，在电脑上响一声 | 能用（本机验过出声） |
-| `mouth` | 0.1.0 | 把一段文字念出来。本地 GPT-SoVITS 或 DeepSeek 云端 TTS 二选一 | 可用（云端模式依赖 key，本地模式依赖本机模型） |
+点「源码」进目录，里面有各自的 README。
+
+| 插件 | 版本 | 做什么 | 状态 | 源码 |
+|---|---|---|---|---|
+| `ledger` | 0.1.0 | 用量账本。扫会话记录里已有的 `request_usage`，页面在「插件 → 账本」，另有只读工具 `ledger_today` | 可用 | [plugins/ledger](plugins/ledger) |
+| `peek` | 0.1.0 | 看屏取帧。抓一段屏幕，只留画面真正变化的那几帧，拼成一张图交给视觉模型 | 可用 | [plugins/peek](plugins/peek) |
+| `comfy` | 0.2.0 | 生图与看图。把 ComfyUI 接成出图后端；`image_view` 把图片文件直接送进上下文，带原图像素坐标 | 可用（**本身不带 ComfyUI**，没装 ComfyUI 只能看图、不能出图） | [plugins/comfy](plugins/comfy) |
+| `ear` | 0.1.0 | 麦克风听写。按住热键说话，识别成字投进会话，可选让 `mouth` 念回复 | 能用（依赖本机模型） | [plugins/ear](plugins/ear) |
+| `chime` | 0.1.0 | 提示音。一轮任务跑完、回复真的发出去后，在电脑上响一声 | 能用（本机验过出声） | [plugins/chime](plugins/chime) |
+| `mouth` | 0.1.0 | 把一段文字念出来。本地 GPT-SoVITS 或 DeepSeek 云端 TTS 二选一 | 可用（云端模式依赖 key，本地模式依赖本机模型） | [plugins/mouth](plugins/mouth) |
 
 ## 安装
 
