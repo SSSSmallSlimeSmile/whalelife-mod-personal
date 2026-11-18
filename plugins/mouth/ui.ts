@@ -36,6 +36,7 @@ export function sanitize(input: any): Record<string, unknown> {
   if ("engine" in src) {
     const value = String(src.engine ?? "").trim();
     if (value === "local" || value === "deepseek") out.engine = value;
+    else if (/^tts:[A-Za-z0-9_.-]{1,64}$/.test(value)) out.engine = value;
   }
   if ("cloud_url" in src) {
     const value = String(src.cloud_url ?? "").trim();
@@ -90,17 +91,23 @@ const STYLE = `
 @media(max-width:760px){.panel-body .pg-pair{grid-template-columns:1fr}}
 `;
 
-function ttsOptions(current: any, list: any[]): string {
-  const now = String(current ?? "").trim();
-  const rows = ["<option value=\"\">不选，用下面自己填的地址和 Key</option>"];
+function engineOptions(current: any, list: any[]): string {
+  const now = String(current ?? "").trim() || "local";
+  const esc = (value: any) =>
+    String(value ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch] as string);
+  const rows = [
+    `<option value="local"${now === "local" ? " selected" : ""}>本地 GPT-SoVITS（自己的音色）</option>`,
+    `<option value="deepseek"${now === "deepseek" ? " selected" : ""}>DeepSeek 云端（stella / tide）</option>`,
+  ];
   for (const one of Array.isArray(list) ? list : []) {
     const id = String(one?.id ?? "");
     if (!id) continue;
+    const value = "tts:" + id;
     const label = String(one?.name ?? "") || String(one?.model ?? "") || id;
-    rows.push(`<option value="${id}"${id === now ? " selected" : ""}>${label}（${String(one?.provider ?? "")}）</option>`);
+    rows.push(`<option value="${esc(value)}"${value === now ? " selected" : ""}>文字转语音 · ${esc(label)}（${esc(String(one?.provider ?? ""))}）</option>`);
   }
-  if (now && !rows.some((row) => row.includes(`value="${now}"`))) {
-    rows.push(`<option value="${now}" selected>（当前配置里没有这个名字：${now}）</option>`);
+  if (now !== "local" && now !== "deepseek" && !rows.some((row) => row.includes(`value="${esc(now)}"`))) {
+    rows.push(`<option value="${esc(now)}" selected>（当前配置里没有这条：${esc(now)}）</option>`);
   }
   return rows.join("");
 }
@@ -119,7 +126,9 @@ export function renderPage(cfg: any, tts: any[] = []): string {
   const esc = (value: any) =>
     String(value ?? "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch] as string);
   const checked = c.enabled === true ? " checked" : "";
-  const cloud = c.engine === "deepseek";
+  const engineNow = String(c.engine ?? "local");
+  const cloud = engineNow !== "local";
+  const fromModel = engineNow.startsWith("tts:");
   const scopeAll = c.auto_scope === "all";
   const dis = cloud ? "" : " disabled";
   return `<!doctype html>
@@ -135,7 +144,7 @@ export function renderPage(cfg: any, tts: any[] = []): string {
 
 <div class="pg-pair">
   <div class="pg-item"><div class="pg-row"><div class="pg-check"><input type="checkbox" id="enabled"${checked}><label class="pg-label" for="enabled">允许念出来（总开关）</label></div><p class="pg-hint">关掉就完全不出声，点聊天页的「念」按钮也不响。网页里聊天会自动念；按 F9 说的话由「耳朵」插件交过来念，不会念两遍。</p></div></div>
-  <div class="pg-item"><div class="pg-row"><label class="pg-label" for="engine">合成引擎</label><select id="engine"><option value="local"${cloud ? "" : " selected"}>本地 GPT-SoVITS（自己的音色）</option><option value="deepseek"${cloud ? " selected" : ""}>DeepSeek 云端（stella / tide）</option></select><p class="pg-hint">本地那条用你训的音色；云端不用等本机服务，但只有两种固定声音，也不能调语速。</p></div></div>
+  <div class="pg-item"><div class="pg-row"><label class="pg-label" for="engine">合成引擎</label><select id="engine">${engineOptions(c.engine, tts)}</select><p class="pg-hint">本地那条用你训的音色，不用等网络；下面「文字转语音」里登记过的云端模型会自动出现在这里，不用再填一遍地址和 Key。</p></div></div>
 </div>
 
     <div class="pg-pair">
@@ -143,11 +152,8 @@ export function renderPage(cfg: any, tts: any[] = []): string {
 </div>
 
 <p class="pg-sub">云端专用 · 只在选了云端时可填</p>
-<div class="pg-pair">
-  <div class="pg-item"><div class="pg-row"><label class="pg-label" for="cloud_model">用哪条 tts 模型</label><select id="cloud_model"${dis}>${ttsOptions(c.cloud_model, tts)}</select><p class="pg-hint">在「管理 → 模型」里登记为 tts 的那些。选了它，地址和 Key 就从那条模型读，本页不用再填；不选就还是下面自己填。</p></div></div>
-</div>
 <div class="pg-pair" id="cloudrow">
-  <div class="pg-item"><div class="pg-row"><label class="pg-label" for="cloud_key">云端 API Key</label><input type="password" id="cloud_key" value="${esc(c.cloud_key)}" placeholder="留空就用主配置里 DeepSeek 那把"${dis}><p class="pg-hint">留空会自动读主配置里 id 含 deepseek 的 provider。上面选了 tts 模型的话，这一格就不用了。</p></div></div>
+  <div class="pg-item"><div class="pg-row"><label class="pg-label" for="cloud_key">云端 API Key</label><input type="password" id="cloud_key" value="${esc(c.cloud_key)}" placeholder="留空就用主配置里 DeepSeek 那把"${dis || (fromModel ? " disabled" : "")}><p class="pg-hint">留空会自动读主配置里 id 含 deepseek 的 provider。引擎选的是「文字转语音」里登记过的模型时，这一格不用填。</p></div></div>
   <div class="pg-item"><div class="pg-row"><label class="pg-label" for="cloud_voice">云端音色</label><select id="cloud_voice"${dis}>${voiceOptions(c.cloud_voice)}</select><p class="pg-hint">云端没给列表接口，点这里让它自己报一遍合法音色<button class="btn" type="button" id="loadvoices">读取云端音色</button></p></div></div>
 </div>
 
@@ -181,8 +187,9 @@ function show(kind, text) {
   box.textContent = text;
 }
 function cloudSync() {
-  const isCloud = $("engine").value === "deepseek";
-  const fromModel = $("cloud_model").value !== "";
+  const value = $("engine").value;
+  const isCloud = value !== "local";
+  const fromModel = value.indexOf("tts:") === 0;
   $("cloud_key").disabled = !isCloud || fromModel;
   $("cloud_voice").disabled = !isCloud;
   $("loadvoices").disabled = !isCloud;
@@ -195,7 +202,6 @@ async function post(path, body) {
   return value;
 }
 $("engine").onchange = cloudSync;
-$("cloud_model").onchange = cloudSync;
 cloudSync();
 $("loadvoices").onclick = async () => {
   const select = $("cloud_voice");
@@ -223,7 +229,6 @@ $("save").onclick = async () => {
     max_chars: $("max_chars").value,
     auto_scope: $("auto_scope").value,
     engine: $("engine").value,
-    cloud_model: $("cloud_model").value,
     cloud_key: $("cloud_key").value,
     cloud_voice: $("cloud_voice").value,
   };

@@ -212,18 +212,18 @@ copy plugins\chime\data\config.example.json plugins\chime\data\config.json
 
 ## mouth 念出来
 
-把文字合成为语音并播放。两种引擎：
+把文字合成为语音并播放。合成引擎下拉里，本机和云端模型都直接列出来：
 
 | 引擎 | 需要什么 |
 |---|---|
 | 本地 GPT-SoVITS | 本机跑着 GPT-SoVITS（默认 `http://127.0.0.1:9880`）、一份参考音频和它的文本 |
-| DeepSeek 云端 | 在「管理 → 模型」登记一条 `tts` 类型，或者在插件页自己填地址和 Key；音色 `stella`（女）/ `tide`（男） |
+| 云端 | 在「管理 → 模型」登记一条 `tts` 类型，它会自动出现在下拉里，选它即可；也可以选「DeepSeek 云端」在插件页自己填地址和 Key。音色 `stella`（女）/ `tide`（男） |
 
 配置页在「插件 → 嘴巴」。`config.example.json` 里所有跟路径、密钥有关的字段都是空的，按你的机器填。
 
 `auto_scope`：`f9`（默认，只有按 F9 说话才自动念）或 `all`（每句回复都念）。
 
-`cloud_model`：选了就走「管理 → 模型」里登记为 `tts` 的那一条——地址从它的 `base_url` 拼 `cloud_path`（默认 `/tools/tts`），Key 也从那条读，插件页的地址和 Key 就不用管了，换 key 只改一处。留空则退回下面的 `cloud_url` + `cloud_key`，没填 Key 时再退到主配置里 id 含 `deepseek` 的那个 provider。
+**引擎下拉里的「文字转语音 · …」就是「管理 → 模型」里登记为 `tts` 的那些**，自动读取，不用在本插件再填一遍。选中某一条后：地址从它的 `base_url` 拼 `cloud_path`（默认 `/tools/tts`），Key 也读那条，换 key 只改一处。选「DeepSeek 云端」则退回 `cloud_url` + `cloud_key`，没填 Key 时再退到主配置里 id 含 `deepseek` 的那个 provider。
 
 云端音色可以点「读取云端音色」去问一次——DeepSeek 没有公开的音色列表接口，但用一个非法音色发请求，它会在报错里把合法值列出来，插件就是解析这个。
 

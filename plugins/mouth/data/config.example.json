@@ -10,7 +10,6 @@
   "max_chars": 110,
   "timeout_ms": 120000,
   "engine": "local",
-  "cloud_model": "",
   "cloud_path": "/tools/tts",
   "cloud_key": "",
   "cloud_voice": "tide"

@@ -187,7 +187,10 @@ export async function apply(ctx: Context) {
 
   /** 云端合成要的三样：地址、key、音色。配了 tts 模型就用模型配置，否则用本插件自己填的。 */
   function cloudTarget() {
-    const id = String(cfg.cloud_model ?? "").trim();
+    const engine = String(cfg.engine ?? "local").trim();
+    const id = engine.startsWith("tts:")
+      ? engine.slice(4).trim()
+      : String(cfg.cloud_model ?? "").trim();
     if (id) {
       const link = ctx.models.connection(id);
       const key = expand(link.api_key);
@@ -245,7 +248,7 @@ export async function apply(ctx: Context) {
   }
 
   async function synth(text: string) {
-    if (String(cfg.engine || "local") === "deepseek") return synthCloud(text);
+    if (String(cfg.engine || "local") !== "local") return synthCloud(text);
     const query = new URLSearchParams({
       text,
       text_lang: cfg.text_lang,
@@ -281,7 +284,7 @@ export async function apply(ctx: Context) {
   async function speak(rawText: string) {
     await reload();
     const engine = String(cfg.engine || "local");
-    if (engine !== "deepseek" && !cfg.ref_audio) throw new Error("没配参考音频，念不了");
+    if (engine === "local" && !cfg.ref_audio) throw new Error("没配参考音频，念不了");
     const clean = forSpeech(rawText);
     if (!clean) throw new Error("这段话过滤后没什么可念的");
     const meat = clean.replace(/代码略|表格略/g, "").replace(/[，。！？；、\s]/g, "");
@@ -413,6 +416,6 @@ export async function apply(ctx: Context) {
 
   await reload();
   ctx.logger?.info?.(
-    `嘴巴就绪（引擎 ${cfg.engine === "deepseek" ? "云端 " + cfg.cloud_voice + (cfg.cloud_model ? " · " + cfg.cloud_model : "") : "本地 " + cfg.url}）`,
+    `嘴巴就绪（引擎 ${String(cfg.engine || "local") === "local" ? "本地 " + cfg.url : "云端 " + cfg.cloud_voice + " · " + (String(cfg.engine || "").startsWith("tts:") ? String(cfg.engine).slice(4) : String(cfg.engine || ""))}）`,
   );
 }
