@@ -322,16 +322,22 @@ export async function apply(ctx: Context) {
       const body = await readBody(req);
       const text = String(body?.text ?? "").trim();
       if (!text) return replyJson(res, 400, { ok: false, error: "没有要念的文字" });
-      if (busy || queue.length) return replyJson(res, 409, { ok: false, error: "上一段还在念，等它念完" });
+      if (busy || queue.length) {
+        ctx.logger?.warn?.("念话请求", { status: "busy", chars: text.length });
+        return replyJson(res, 409, { ok: false, error: "上一段还在念，等它念完" });
+      }
       busy = true;
       try {
+        ctx.logger?.info?.("念话请求", { status: "start", chars: text.length, preview: text.slice(0, 40) });
         const r = await speak(text);
+        ctx.logger?.info?.("念话请求", { status: "ok", chars: r.chars, segments: r.segments, ms: r.ms });
         return replyJson(res, 200, r);
       } finally {
         busy = false;
       }
     } catch (error: any) {
       busy = false;
+      ctx.logger?.warn?.("念话请求", { status: "fail", error: String(error?.message ?? error) });
       return replyJson(res, 500, { ok: false, error: error?.message ?? String(error) });
     }
   });
