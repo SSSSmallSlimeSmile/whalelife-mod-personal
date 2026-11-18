@@ -1,0 +1,11 @@
+{
+  "python": "",
+  "base_url": "http://127.0.0.1:8188",
+  "comfy_root": "",
+  "launch_args": "--lowvram",
+  "timeout_seconds": 300,
+  "need_vram_mb": 3000,
+  "vram_guard": true,
+  "auto_start": false,
+  "stop_on_exit": true
+}

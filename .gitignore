@@ -1,0 +1,8 @@
+# 本机配置、运行产物，一律不入库
+plugins/*/data/config.json
+plugins/*/data/*.log
+plugins/*/out/
+plugins/*/shots/
+plugins/*/__pycache__/
+plugins/*/*.bak*
+*.log

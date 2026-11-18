@@ -1,0 +1,5 @@
+id: comfy
+name: 生图
+description: 接 ComfyUI 出图与看图；页面上能手动启停服务、查显存、选工作流
+version: 0.2.0
+apiVersion: "1"

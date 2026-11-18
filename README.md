@@ -18,6 +18,7 @@
 |---|---|---|---|
 | `ledger` | 0.1.0 | 用量账本。扫会话记录里已有的 `request_usage`，页面在「插件 → 账本」，另有只读工具 `ledger_today` | 可用 |
 | `peek` | 0.1.0 | 看屏取帧。抓一段屏幕，只留画面真正变化的那几帧，拼成一张图交给视觉模型 | 可用 |
+| `comfy` | 0.2.0 | 生图与看图。把 ComfyUI 接成出图后端；`image_view` 把图片文件直接送进上下文，带原图像素坐标 | 可用（**本身不带 ComfyUI**，没装 ComfyUI 只能看图、不能出图） |
 | `ear` | 0.1.0 | 麦克风听写。按住热键说话，识别成字投进会话，可选让 `mouth` 念回复 | 能用（依赖本机模型） |
 | `chime` | 0.1.0 | 提示音。一轮任务跑完、回复真的发出去后，在电脑上响一声 | 能用（本机验过出声） |
 | `mouth` | 0.1.0 | 把一段文字念出来。本地 GPT-SoVITS 或 DeepSeek 云端 TTS 二选一 | 可用（云端模式依赖 key，本地模式依赖本机模型） |
@@ -30,6 +31,7 @@
 plugins/
 ├── ledger/
 ├── peek/
+├── comfy/
 ├── ear/
 ├── chime/
 └── mouth/
@@ -148,6 +150,62 @@ copy plugins\peek\data\config.example.json plugins\peek\data\config.json
 - `vram_guard` 只在真要去加载本地模型时才检查，管不了 eyes
 没验过的：`pip install -r requirements.txt` 没真跑过（那会动本机环境），依赖能装上是从机器上已装的包推的；多显示器行为；Linux/macOS 完全没试过。
 
+## comfy 生图与看图
+
+**这个插件本身不带 ComfyUI。** 它只是 WhaleLife 和 ComfyUI 之间的一个接口：装了本插件、又在自己机器上装了 ComfyUI，才能出图；**没装 ComfyUI，就只能用 `image_view` 看图，不能出图**。插件不下载、不安装、不管理 ComfyUI 的文件，只负责启动它、往里发工作流、取回出图。
+
+准备一份 ComfyUI（[便携版](https://github.com/comfyanonymous/ComfyUI/releases) 最省事），解压到哪都行，然后在配置里指着它。
+
+```
+copy plugins\comfy\data\config.example.json plugins\comfy\data\config.json
+```
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `comfy_root` | 空 | ComfyUI 根目录（便携版那种带 `python_embeded` 的）。**留空就用不了出图**，`image_view` 照常 |
+| `python` | 空 | 跑边车的解释器。留空依次找 `WHALELIFE_COMFY_PYTHON`、PATH 里的 `python`（跳过应用商店占位符）、常见安装位置、ComfyUI 自带 `python_embeded` |
+| `base_url` | `http://127.0.0.1:8188` | ComfyUI 服务地址 |
+| `launch_args` | `--lowvram` | 启动参数。8G 卡跑 SDXL 靠它把权重分块换进换出 |
+| `timeout_seconds` | `300` | 单次出图最多等多久 |
+| `vram_guard` | `true` | 出图前查空闲显存，不够就报警不硬跑 |
+| `need_vram_mb` | `3000` | 上面那条的阈值 |
+| `auto_start` | `false` | WhaleLife 起来时自动拉起 ComfyUI |
+| `stop_on_exit` | `true` | WhaleLife 退出时关掉自己拉起的那份 |
+
+保存后热生效，只有「自动拉起」「退出关掉」要等下次启动/退出。
+
+**两个工具**：
+
+- `comfy_status` — 在不在跑、什么显卡、剩多少显存、有哪些工作流
+- `comfy_generate` — 出图。`prompt` 必填，`negative`/`workflow`/`width`/`height`/`seed`/`extra` 可选
+- `image_view` — 看图。`path` 必填，`crop`（`x,y,w,h`）、`scale`、`max_width`、`grid` 可选
+
+出图返回的是**文件路径**，看不见画面。要确认画了什么，用 `image_view`。
+
+### image_view 的坐标约定
+
+图上刻度一律标**原图像素**。裁剪和缩放都在脚本里换算完，调用方不用自己乘，也就不容易把屏幕坐标当成原图坐标。
+
+这是踩出来的：之前想核对自己抓的图，只能截屏——拿到的是缩放后的屏幕坐标，和原图差一截，于是遮罩补到了大腿上。现在这个工具直接把原图送进上下文，刻度画在图上。
+
+返回的图只在**当前这一轮**有效，不进历史、不写记忆，也不占后续上下文。
+
+`peek` 会调它：抓完屏想细看某一帧时用。`peek` 的 `plugin.yaml` 里声明了 `optionalDepends: [comfy]`，没装 comfy 就是没这项能力，抓屏本身照常。
+
+### 工作流
+
+`workflows/` 放 ComfyUI 导出的 **API 格式** JSON（画布格式不行，要在 ComfyUI 里另存为 API）。拖进去就能用，不用手填节点 id：插件顺着 `KSampler` 的 `positive` / `negative` 连线认出哪条是正面提示词，再找 `EmptyLatentImage` 的宽高和 `KSampler` 的种子。认出来的槽在 `comfy_status` 里能看到。
+
+仓库里的四份是 SDXL 底模和 Nova Anime IL 的工作流，只是样例，换成你自己的模型后要重新导出。
+
+### 显存
+
+8G 卡跑 SDXL 需要 `--lowvram`（默认）。这套配置下出过 832×1568 的图，约 60 秒。
+
+**语音合成（GPT-SoVITS）常驻约 2.5G。** 两边一起用显存会紧，插件出图前查一次空闲显存，低于 `need_vram_mb` 就拒绝并说明，不硬跑。真不够时先到 voice 插件页停掉语音。查不到 `nvidia-smi` 的机器不拦。
+
+没验过的：只在本人这台 Windows 上跑过；只试过 SDXL 和 SD1.5 的工作流，Flux、LoRA、img2img 没试；「退出关掉」只关本插件自己拉起的进程；认槽逻辑对多阶段工作流没实测。
+
 ## ear 麦克风听写
 
 **装之前要准备三样东西**，缺一样就跑不起来：
@@ -166,7 +224,6 @@ copy plugins\ear\data\config.example.json plugins\ear\data\config.json
 | `sensevoice_dir` | SenseVoice 模型目录。也认环境变量 `WHALELIFE_SENSE_DIR` |
 | `device` | 麦克风设备号。`0` 常常不是你要的那个，先 `python -c "import sounddevice; print(sounddevice.query_devices())"` 看清楚 |
 | `engine` | 目前只有 `sensevoice` |
-| `model` | 只给 whisper 分支用。**SenseVoice 走这条时读不到它，填了也不生效**，留着是给以后接 whisper |
 | `language` / `initial_prompt` | 识别语言与提示词 |
 | `silence` | 静音多久算一句结束，秒 |
 | `max_len` | 单句最长秒数 |
@@ -255,9 +312,10 @@ MIT，全文见 `LICENSE`。
 ## 已知短板汇总
 
 - `ledger`：价格表是手抄的，供应商调价不会自动跟着变
-- `peek`：视觉模型用本地 Ollama 的 `qwen3-vl:4b`，没配就报错
-- `ear`：`model` 字段目前是死的（只有 whisper 分支读它，而引擎只有 SenseVoice）
+- `peek`：识图默认跟随当前对话模型；本地 Ollama 那条要显卡有富余，显存不够会被守卫拦下
 - `ear`：全局热键会占住那个键，游戏里撞键要换
 - `chime`：长音频会把后续提示音全挡掉，建议切成短音
 - `mouth`：念的是完整回复再过滤，所以等长回复写完才开口
-- 五个插件都只在 Windows 上跑过
+- `comfy`：本身不带 ComfyUI，没装就只能看图不能出图；重绘（局部重画）没有做成工具，只能出整图
+- `comfy`：`image_view` 只画坐标网格，不测像素颜色，报位置得自己看图
+- 六个插件都只在 Windows 上跑过

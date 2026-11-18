@@ -1,6 +1,6 @@
 @echo off
-rem Start the F9 hold-to-talk helper with pythonw (no console window).
-rem If pythonw is not on PATH, set WHALELIFE_F9_PYTHON to its full path first.
-set "PY=pythonw"
-if not "%WHALELIFE_F9_PYTHON%"=="" set "PY=%WHALELIFE_F9_PYTHON%"
+rem Launch the global F9 hold-to-talk helper.
+rem Set WHALELIFE_F9_PYTHON to a pythonw.exe path; otherwise use pythonw from PATH.
+set "PY=%WHALELIFE_F9_PYTHON%"
+if "%PY%"=="" set "PY=pythonw"
 start "" "%PY%" "%~dp0hold_to_talk.py"

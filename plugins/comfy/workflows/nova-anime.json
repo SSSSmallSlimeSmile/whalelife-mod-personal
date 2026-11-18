@@ -1,0 +1,55 @@
+{
+  "75": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": { "ckpt_name": "NovaAnimeILV190.safetensors" }
+  },
+  "82": {
+    "class_type": "CLIPSetLastLayer",
+    "inputs": { "clip": ["75", 1], "stop_at_clip_layer": -2 }
+  },
+  "83": {
+    "class_type": "CLIPSetLastLayer",
+    "inputs": { "clip": ["75", 1], "stop_at_clip_layer": -2 }
+  },
+  "67": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["82", 0],
+      "text": "1 girl, solo, female focus, adult, full body, standing, (hand on hip:1.2), (confident stance:1.2), chin up, (stern gaze:1.2), (sharp red eyes:1.4), narrowed eyes, cold expression, no glasses, (grey trench coat:1.35), (open coat:1.2), coat hem, waist belt, white shirt, black vest, black necktie, black tights, black leather shoes, (short black hair:1.25), blunt bangs, (red inner hair:1.2), (red hair streak on one side:1.1), (small silver pocket watch hanging on the waist belt:1.5), short silver watch chain, monochrome palette, grey tones, flat color, minimal shading, clean lineart, simple background, grey background"
+    }
+  },
+  "71": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["83", 0],
+      "text": "lowres, worst quality, low quality, bad anatomy, bad hands, extra digits, missing fingers, watermark, signature, text, comic, nsfw, deformed, blurry, 1boy, male, masculine, glasses, spectacles, multiple pocket watches, extra watch chains, holding pocket watch, giant pocket watch, oversized watch, floating watch, gentle smile, soft expression, blush, shy, cute, sweet, submissive, teary, blue hair, rainbow hair, red cape, red clothing, red coat, harsh color split, soft lighting, glossy shading, heavy shading, gradient background, high saturation, detailed eyes, long eyelashes"
+    }
+  },
+  "77": {
+    "class_type": "EmptyLatentImage",
+    "inputs": { "width": 832, "height": 1568, "batch_size": 1 }
+  },
+  "70": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["75", 0],
+      "positive": ["67", 0],
+      "negative": ["71", 0],
+      "latent_image": ["77", 0],
+      "seed": 417,
+      "steps": 25,
+      "cfg": 4.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1
+    }
+  },
+  "65": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["70", 0], "vae": ["75", 2] }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["65", 0], "filename_prefix": "kan" }
+  }
+}
